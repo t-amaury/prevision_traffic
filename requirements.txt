@@ -1,6 +1,3 @@
+streamlit
 pandas
-datetime
-numpy==1.26
-pytest
-matplotlib
-flask
+numpy
