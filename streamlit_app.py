@@ -13,51 +13,39 @@ st.set_page_config(
 # Declare some useful functions.
 
 @st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
-
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
+def get_prevision_data():
+    DATA_FILENAME = Path(__file__).parent/'data/prevision_data.csv'
+    raw_prevision_df = pd.read_csv(DATA_FILENAME)
+    MIN_YEAR = 2024
+    MAX_YEAR = 2030
+    prevision_df = raw_prevision_df.melt(
+        ['pair'],
         [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
         'Year',
-        'GDP',
+        'prevision',
     )
-
     # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+    prevision_df['Year'] = pd.to_numeric(prevision_df['Year'])
+    return prevision_df
 
-    return gdp_df
+@st.cache_data
+def get_eurocontrol_data():
+    DATA_FILENAME = Path(__file__).parent/'data/eurocontrol_data.csv'
+    raw_eurocontrol_df = pd.read_csv(DATA_FILENAME)
+    MIN_YEAR = 2019
+    MAX_YEAR = 2030
+    eurocontrol_df = raw_eurocontrol_df.melt(
+        ['pair'],
+        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
+        'Year',
+        'prevision',
+    )
+    # Convert years from string to integers
+    eurocontrol_df['Year'] = pd.to_numeric(eurocontrol_df['Year'])
+    return eurocontrol_df
 
-gdp_df = get_gdp_data()
+prevision_df = get_prevision_data()
+eurocontrol_df = get_eurocontrol_data()
 
 # -----------------------------------------------------------------------------
 # Draw the actual page
@@ -66,18 +54,14 @@ gdp_df = get_gdp_data()
 '''
 # :airplane: Prévision du traffic
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
+Utilisation de data de prévision de 2024 à 2030.
 '''
 
 # Add some spacing
 ''
 ''
-
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+min_value = prevision_df['Year'].min()
+max_value = prevision_df['Year'].max()
 
 from_year, to_year = st.slider(
     'Which years are you interested in?',
@@ -85,7 +69,7 @@ from_year, to_year = st.slider(
     max_value=max_value,
     value=[min_value, max_value])
 
-countries = gdp_df['Country Code'].unique()
+countries = prevision_df['pair'].unique()
 
 if not len(countries):
     st.warning("Select at least one country")
@@ -93,60 +77,45 @@ if not len(countries):
 selected_countries = st.multiselect(
     'Which countries would you like to view?',
     countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+    ['LF_LF'])
+
+include_eurocontrol = st.checkbox('Include Eurocontrol data')
 
 ''
 ''
 ''
 
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
+filtered_prevision_df = prevision_df[
+    (prevision_df['pair'].isin(selected_countries))
+    & (prevision_df['Year'] <= to_year)
+    & (from_year <= prevision_df['Year'])
 ]
 
-st.header('GDP over time', divider='gray')
+if include_eurocontrol:
+    filtered_eurocontrol_df = eurocontrol_df[
+        (eurocontrol_df['Year'] <= to_year)
+        & (from_year <= eurocontrol_df['Year'])
+    ]
+    filtered_prevision_df = pd.concat([filtered_prevision_df, filtered_eurocontrol_df])
+
+filtered_prevision_df['Year'] = filtered_prevision_df['Year'].astype(str)
+
+st.header('Prévision over time', divider='gray')
 
 ''
-
+''
 st.line_chart(
-    filtered_gdp_df,
+    filtered_prevision_df,
     x='Year',
-    y='GDP',
-    color='Country Code',
+    y='prevision',
+    color='pair',
 )
 
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+# Optionally, add a download button for the filtered data
+csv = filtered_prevision_df.to_csv(index=False)
+st.download_button(
+    label="Download data as CSV",
+    data=csv,
+    file_name='filtered_prevision_data.csv',
+    mime='text/csv',
+)
