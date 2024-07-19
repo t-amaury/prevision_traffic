@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
-    page_title='Prévision du trafic',
+    page_title='Prévisions de trafic',
     page_icon=':airplane:', # This is an emoji shortcode. Could be a URL too.
 )
 
@@ -52,7 +52,7 @@ eurocontrol_df = get_eurocontrol_data()
 
 # Set the title that appears at the top of the page.
 '''
-# :airplane: Prévision du traffic
+# :airplane: Prévisions de trafic
 
 Utilisation de data de prévision de 2024 à 2030.
 '''
